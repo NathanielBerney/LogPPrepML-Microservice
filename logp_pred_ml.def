@@ -1,0 +1,85 @@
+BootStrap: docker
+From: continuumio/miniconda3:latest
+
+%labels
+    Author "Nathaniel Berney"
+    Version "1.0.0"
+    Description "LogPML Microservice - LogPML property prediction using CTox models"
+    HelpURL "https://github.com/NathanielBerney/LogPPrepML-Microservice"
+
+%help
+    LogPML Microservice Container
+
+    This container runs a FastAPI microservice for predicting Cav12, hERG, and Nav15 properties.
+
+    Usage:
+        singularity run logp_pred_ml.sif
+        singularity run --env PORT=10000 logp_pred_ml.sif
+        singularity shell logp_pred_ml.sif
+    
+    Environment Variables:
+        PORT: Server port (default: 10000)
+        HOST: Server host (default: 0.0.0.0)
+        RELOAD: Enable auto-reload (default:true)
+
+%environment 
+    export PYTHONNOUSERSITE=1
+    export PATH="/opt/conda/bin:$PATH"
+    export PYTHONUNBUFFERED=1
+    export PYTHONPATH=/app
+    export PORT=10000
+    export HOST=0.0.0.0
+    export DOCKER_BUILDKIT=1
+    export CONDA_PREFIX=/opt/conda/envs/bio_modeling_env
+    export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+
+%files
+    logp_pred_ml_handler.py /app/logp_pred_ml_handler.py
+    environment.yml /app/environment.yml
+    main.py /app/main.py
+    logp_pred_ml /app/logp_pred_ml
+    mol2vec /app/mol2vec
+
+%post
+    mkdir -p /app
+    # Use patchelf instead of execstack
+    apt-get update && apt-get install -y git patchelf
+
+    # 1. Create the environment
+    /opt/conda/bin/conda env create -f /app/environment.yml -y
+
+    # 2. Use patchelf to clear the executable stack flag
+    # --clear-execstack is the modern equivalent to 'execstack -c'
+    find /opt/conda/envs/logp_pred_ml -name "libtorch_cpu.so" -exec patchelf --clear-execstack {} +
+
+    # 3. Clean up
+    /opt/conda/bin/conda clean -afy
+    rm -rf /opt/conda/pkgs/*
+
+%runscript
+    #!/bin/bash
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate logp_pred_ml
+    cd /app || exit 1
+
+    #Set defaults if not provided
+    PORT=${PORT:-10000}
+
+    echo "========================================="
+    echo "LogPML Microservice"
+    echo "========================================="
+    echo "Starting FastAPI server..."
+    echo "Port: $PORT"
+    echo "========================================="
+    echo ""
+
+    # Run uvicorn
+    python3 main.py "$@"
+
+%test
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate logp_pred_ml
+    python3 -c "import fastapi; print('All dependencies installed successfully')"
+
+
+
