@@ -292,7 +292,6 @@ dependencies:
   - zstd=1.5.7=hb8e6e7a_2
   - pip:
       - gensim==4.3.3
-      - mol2vec==0.1
       - numpy==1.26.4
       - tqdm==4.67.1
 prefix: /home/dnehra/.conda/envs/tf_env

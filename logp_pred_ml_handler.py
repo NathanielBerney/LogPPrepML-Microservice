@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 from gensim.models import word2vec
-from mol2vec.features import mol2alt_sentence, MolSentence, DfVec
+from mol2vec.mol2vec.features import mol2alt_sentence, MolSentence, DfVec
 
 # Suppress TF logs for a cleaner CLI experience
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
@@ -59,9 +59,10 @@ class LogPMLHandler:
         full_features = np.concatenate([mol2vec_part, rdkit_part])
         return full_features.reshape(1, -1) # Reshape for a single prediction
 
-    def process_multiple_properties(self, smi: str, property_list: List[str]) -> Dict[str, Any]:
+    def process_multiple_properties(self, smiles: str, property_list: List[str]) -> Dict[str, Any]:
+        batch_preds = {}
         try:
-            mol = Chem.MolFromSmiles(smi)
+            mol = Chem.MolFromSmiles(smiles)
             if mol is None:
                 raise ValueError("Invalid SMILES")
 
@@ -70,23 +71,35 @@ class LogPMLHandler:
 
             for prop in property_list:
                 if prop == "ML_LogP_NN":
-                    pred = self.models["ML_LogP_NN"].predict(features, verbose=0)
-                    results[prop] = float(pred.flatten()[0])
+                    result = self.models[prop].predict(features, verbose=0)
+                    result = float(result.flatten()[0])
+                    batch_preds[prop] = result
                 
                 elif prop == "ML_LogP_Ridge":
                     # Scikit-learn models handle 2D arrays directly
-                    pred = self.models["ML_LogP_Ridge"].predict(features)
-                    results[prop] = float(pred[0])
-
-            return {
-                "smiles": smi,
-                "status": "success",
-                "results": results,
-                "error": None
-            }
+                    result = self.models[prop].predict(features)
+                    result = float(result[0])
+                    batch_preds[prop] = result
+            
+            res_entry = {
+                    "smiles": smiles,
+                    "status": "success",
+                    "results": {},
+                    "error": None
+                }
+            
+            for prop in property_list:
+            
+                res_entry["results"][prop] = {
+                                "property": prop,
+                                "status": "success",
+                                "results": float(batch_preds[prop]),
+                                "error": None
+                            }
+            return  res_entry
 
         except Exception as e:
-            return {"smiles": smi, "status": "error", "results": {}, "error": str(e)}
+            return {"smiles": smiles, "status": "error", "results": {}, "error": str(e)}
 
     def batch_predict(self, smiles_list: List[str], props: List[str]) -> List[Dict]:
         return [self.process_multiple_properties(s, props) for s in smiles_list]
